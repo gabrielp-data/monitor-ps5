@@ -13,3 +13,18 @@ COMO LIGAR O AVISO NO TELEGRAM (só uma vez)
 
 DEPOIS DISSO
    py monitor_ps5.py --loop 60     -> checa a cada 60 minutos e avisa no Telegram
+
+As opções de compra ficam no início de monitor_ps5.py. O teto inicial é
+R$ 4.000 para o anúncio. Nas lojas o aviso se repete se cair pelo menos
+R$ 100 desde a checagem anterior ou cruzar um dos limites de preço.
+Nos canais e no Pelando, cada post com preço elegível entra uma vez.
+Até R$ 3.000 o aviso recebe destaque. Abaixo de R$ 2.500 ele pede
+conferência. O AliExpress fica desligado por padrão.
+
+PRECO_GTA_VI aceita o preço do jogo em reais para estimar o custo de comprar
+separado. O frete depende do CEP. Confira no anúncio o vendedor, o conteúdo
+do kit e o preço final para sua forma de pagamento.
+
+Avisos aguardando entrega ficam em alertas_pendentes.json por até seis horas.
+O monitor tenta novamente na próxima checagem. O histórico em CSV continua
+registrando as observações de preço independentemente da entrega.
