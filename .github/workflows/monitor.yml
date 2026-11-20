@@ -32,6 +32,6 @@ jobs:
         run: |
           git config user.name "monitor-ps5"
           git config user.email "monitor-ps5@users.noreply.github.com"
-          git add historico.csv pelando_vistos.txt
+          git add historico.csv pelando_vistos.txt telegram_vistos.txt
           git diff --cached --quiet || git commit -m "historico de precos"
           git push

@@ -164,6 +164,62 @@ def aliexpress():
     return itens
 
 
+CANAIS_TELEGRAM = ["LaPromotion"]   # canais públicos de oferta (o nome que vem depois de t.me/)
+TG_VISTOS = PASTA / "telegram_vistos.txt"
+NAO_E_CONSOLE_POST = ["jogo", "controle", "capa", "cupom mercado", "headset", "fone", "suporte",
+                      "base de", "vr2", "portal", "skin", "cabo", "gift card", "ps plus",
+                      "sorteio", "gta", "grand theft"]
+
+
+def canais_telegram():
+    """Lê a página pública dos canais (t.me/s/...) e pega posts de console PS5 das últimas 6 horas."""
+    import html as H
+    from datetime import timezone, timedelta
+    vistos = set(TG_VISTOS.read_text().split()) if TG_VISTOS.exists() else set()
+    limite = datetime.now(timezone.utc) - timedelta(hours=6)
+    novos = []
+    for canal in CANAIS_TELEGRAM:
+        pagina = baixar(f"https://t.me/s/{canal}?q=ps5")
+        for p in pagina.split('class="tgme_widget_message_wrap')[1:]:
+            post = re.search(r'data-post="([^"]+)"', p)
+            texto = re.search(r'tgme_widget_message_text[^>]*>(.*?)</div>', p, re.S)
+            quando = re.search(r'datetime="([^"]+)"', p)
+            if not post or not texto or not quando:
+                continue
+            if post.group(1) in vistos or datetime.fromisoformat(quando.group(1)) < limite:
+                continue
+            texto = re.sub(r"<br\s*/?>", "\n", texto.group(1))
+            texto = H.unescape(re.sub(r"<[^>]+>", "", texto)).strip()
+            primeira = texto.split("\n")[0].lower()
+            if not ("ps5" in primeira or "playstation 5" in primeira or "playstation®5" in primeira):
+                continue
+            if any(p_ in primeira for p_ in NAO_E_CONSOLE_POST):
+                continue
+            preco = re.search(r"R\$\s*([\d.]+(?:,\d{2})?)", texto)
+            preco = float(preco.group(1).replace(".", "").replace(",", ".")) if preco else None
+            if preco is not None and preco < PRECO_MINIMO_CONSOLE:
+                continue
+            foto = re.search(r"background-image:url\('([^']+)'\)", p.split("tgme_widget_message_photo_wrap", 1)[-1]) \
+                if "tgme_widget_message_photo_wrap" in p else None
+            novos.append({"id": post.group(1), "canal": canal, "texto": texto, "preco": preco,
+                          "foto": foto.group(1) if foto else "", "link": f"https://t.me/{post.group(1)}"})
+    return novos
+
+
+def avisar_canais():
+    try:
+        novos = canais_telegram()
+    except Exception as e:
+        print(f"  Canais do Telegram: erro ({e})")
+        return
+    print(f"  Canais do Telegram: {len(novos)} post(s) novo(s) de PS5")
+    for o in novos:
+        topo = "🚨🚨🚨 PROMOÇÃO!!! 🚨🚨🚨" if o["preco"] and o["preco"] <= PRECO_SUPER else "📢 OFERTA DE PS5 NUM CANAL"
+        notificar(f"{topo}\n(canal {o['canal']})\n\n{o['texto'][:700]}\n\n📎 Post original: {o['link']}", o["foto"])
+        with open(TG_VISTOS, "a") as f:
+            f.write(o["id"] + "\n")
+
+
 PELANDO_VISTOS = PASTA / "pelando_vistos.txt"
 
 
@@ -327,6 +383,7 @@ def checar():
             print(f"  {nome}: erro ({e})")
 
     avisar_pelando()
+    avisar_canais()
 
     if not itens:
         print("Nenhum preço encontrado agora.")
