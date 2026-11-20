@@ -146,19 +146,37 @@ def magalu_via_zoom():
     return itens
 
 
+# Regras de confiança do AliExpress (a Sony não tem loja oficial lá):
+ALI_NOTA_MINIMA = 4.7        # estrelas
+ALI_VENDAS_MINIMAS = 50      # quantos já venderam
+ALI_PRECO_MINIMO = 3300      # PS5 novo mais barato que isso no Ali = quase sempre golpe
+
+
 def aliexpress():
+    """Só passa anúncio Choice (AliExpress garante entrega/devolução) OU
+    com nota alta E muitas vendas. Preço baixo demais é descartado."""
     html = baixar("https://pt.aliexpress.com/w/wholesale-playstation-5-console.html")
     itens = []
     for bloco in html.split('"productId":"')[1:]:
         pid = bloco[:bloco.find('"')]
+        bloco = bloco[:6000]
         t = re.search(r'"displayTitle":"([^"]*)', bloco)
         p = re.search(r'"minPrice":([\d.]+)', bloco)
         if not t or not p:
             continue
         titulo, preco = t.group(1), float(p.group(1))
-        if not parece_console(titulo, preco):
+        if preco < ALI_PRECO_MINIMO or not parece_console(titulo, preco):
             continue
-        itens.append({"loja": "AliExpress", "titulo": "⚠ confira o vendedor! " + titulo,
+        nota = re.search(r'"starRating":([\d.]+)', bloco)
+        nota = float(nota.group(1)) if nota else 0
+        vendas = re.search(r'"tradeDesc":"([\d.,]+)\+?\s', bloco)
+        vendas = int(re.sub(r"\D", "", vendas.group(1))) if vendas else 0
+        choice = '"isChoice":"true"' in bloco or '"isChoice":true' in bloco
+        confiavel = choice or (nota >= ALI_NOTA_MINIMA and vendas >= ALI_VENDAS_MINIMAS)
+        if not confiavel:
+            continue
+        selo = "Choice" if choice else f"nota {nota}, {vendas} vendidos"
+        itens.append({"loja": "AliExpress", "titulo": f"[{selo}] " + titulo,
                       "preco": preco, "link": f"https://pt.aliexpress.com/item/{pid}.html",
                       "foto": ("https:" + f.group(1)) if (f := re.search(r'"imgUrl":"([^"]+)"', bloco)) else ""})
     return itens
@@ -418,8 +436,8 @@ def brl(v):
 def checar():
     print(f"\n=== Checando preços do PS5 — {datetime.now():%d/%m/%Y %H:%M} ===")
     itens = []
-    # AliExpress foi tirado: lá aparecem anúncios falsos de PS5 baratinho
-    fontes = [("KaBuM!", kabum), ("Amazon", amazon), ("Magalu", magalu_via_zoom)]
+    fontes = [("KaBuM!", kabum), ("Amazon", amazon), ("Magalu", magalu_via_zoom),
+              ("AliExpress", aliexpress)]  # Ali só com vendedor bem avaliado (ver regras acima)
     for nome, fonte in fontes:
         try:
             achados = fonte()
