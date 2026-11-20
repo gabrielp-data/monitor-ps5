@@ -28,6 +28,7 @@ from pathlib import Path
 
 # ===================== CONFIGURE AQUI =====================
 PRECO_ALVO = 4000.00        # avisa quando algum PS5 ficar igual ou abaixo disso (R$)
+PRECO_SUPER = 3000.00       # abaixo disso: aviso especial de PROMOÇÃO 🚨
 PRECO_MINIMO_CONSOLE = 2500 # abaixo disso é acessório/jogo, não console
 LOJAS_ZOOM = ["Magazine Luiza"]  # lojas aceitas vindas do comparador Zoom
 # ==========================================================
@@ -291,7 +292,17 @@ def checar():
         if i["preco"] <= PRECO_ALVO and (anterior is None or anterior > PRECO_ALVO or motivos):
             marca += "  ★ ABAIXO DO ALVO"
             motivos.append(f"★ Abaixo do seu alvo de {brl(PRECO_ALVO)}")
-        if motivos:
+        super_promo = i["preco"] <= PRECO_SUPER and (anterior is None or anterior > PRECO_SUPER or motivos)
+        if super_promo:
+            marca += "  🚨 PROMOÇÃO"
+            alertas.append((
+                f"🚨🚨🚨 PROMOÇÃO!!! 🚨🚨🚨\n"
+                f"PS5 POR MENOS DE {brl(PRECO_SUPER)}!\n\n"
+                f"🏪 {i['loja']}\n💰 {brl(i['preco'])}\n\n"
+                f"{i['titulo'][:150]}\n\n🔗 {i['link']}\n\n"
+                f"Corre antes que acabe! (mas confira se é o console mesmo)",
+                i.get("foto", "")))
+        elif motivos:
             alertas.append((
                 f"🎮 PROMOÇÃO DE PS5 — {i['loja']}\n\n"
                 f"💰 {brl(i['preco'])}\n" + "\n".join(motivos) + "\n\n"
