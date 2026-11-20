@@ -1,0 +1,15 @@
+COMO LIGAR O AVISO NO TELEGRAM (só uma vez)
+
+1. No Telegram, procure por @BotFather e mande: /newbot
+2. Escolha um nome (ex: Meu Monitor PS5) e um usuário que termine em "bot".
+3. O BotFather te manda um TOKEN (um código grande tipo 123456:ABC...).
+   NÃO mande esse código pra ninguém.
+4. Abra o arquivo config.json desta pasta e cole o token no lugar de
+   COLE_AQUI_O_TOKEN_DO_BOTFATHER. Salve.
+5. No Telegram, abra o seu bot novo e mande /start pra ele.
+6. No terminal, nesta pasta, rode:
+       py monitor_ps5.py --telegram
+   Você deve receber "Monitor de PS5 ligado!" no Telegram.
+
+DEPOIS DISSO
+   py monitor_ps5.py --loop 60     -> checa a cada 60 minutos e avisa no Telegram
