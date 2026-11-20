@@ -164,6 +164,58 @@ def aliexpress():
     return itens
 
 
+PELANDO_VISTOS = PASTA / "pelando_vistos.txt"
+
+
+def pelando():
+    """Ofertas de PS5 que a comunidade posta no Pelando (as mesmas que rodam no X).
+    Manda cada oferta nova UMA vez só."""
+    import html as H
+    pagina = H.unescape(baixar("https://www.pelando.com.br/busca/console-ps5"))
+    vistos = set(PELANDO_VISTOS.read_text().split()) if PELANDO_VISTOS.exists() else set()
+    inicio = re.compile(r'\{"id":\[0,"([0-9a-f-]{36})"\],"slug":\[0,"([^"]+)"\],"title":\[0,"([^"]*)"\]')
+    achados = list(inicio.finditer(pagina))
+    novas = []
+    for n, m in enumerate(achados):
+        fim = achados[n + 1].start() if n + 1 < len(achados) else m.end() + 8000
+        bloco = pagina[m.end():fim]
+        oferta_id, slug, titulo = m.groups()
+        preco = re.search(r'"price":\[0,([\d.]+)\]', bloco)
+        status = re.search(r'"status":\[0,"(\w+)"\]', bloco)
+        if not preco or not status or status.group(1) != "active":
+            continue
+        preco = float(preco.group(1))
+        if oferta_id in vistos or not parece_console(titulo, preco):
+            continue
+        loja = re.search(r'"store":\[0,\{"id":\[0,"\d+"\],"name":\[0,"([^"]+)"', bloco)
+        foto = re.search(r'(https://media\.pelando\.com\.br/[^"]*/0x300/[^"]*)', bloco)
+        link_loja = re.search(r'"sourceUrl":\[0,"([^"]+)"', bloco)
+        novas.append({
+            "id": oferta_id, "titulo": titulo, "preco": preco,
+            "loja": loja.group(1) if loja else "?",
+            "foto": foto.group(1) if foto else "",
+            "link": link_loja.group(1) if link_loja else "",
+            "pelando": f"https://www.pelando.com.br/d/{slug}",
+        })
+    return novas
+
+
+def avisar_pelando():
+    try:
+        novas = pelando()
+    except Exception as e:
+        print(f"  Pelando: erro ({e})")
+        return
+    print(f"  Pelando: {len(novas)} oferta(s) nova(s) de console")
+    for o in novas:
+        topo = "🚨🚨🚨 PROMOÇÃO!!! 🚨🚨🚨" if o["preco"] <= PRECO_SUPER else "🔥 OFERTA NOVA DE PS5"
+        notificar(f"{topo}\n(postada no Pelando)\n\n🏪 {o['loja']}\n💰 {brl(o['preco'])}\n\n"
+                  f"{o['titulo'][:150]}\n\n🔗 {o['link'] or o['pelando']}\n"
+                  f"💬 Comentários: {o['pelando']}", o["foto"])
+        with open(PELANDO_VISTOS, "a") as f:
+            f.write(o["id"] + "\n")
+
+
 def ultimo_preco_por_link():
     precos = {}
     if HISTORICO.exists():
@@ -273,6 +325,8 @@ def checar():
             itens += achados
         except Exception as e:
             print(f"  {nome}: erro ({e})")
+
+    avisar_pelando()
 
     if not itens:
         print("Nenhum preço encontrado agora.")
