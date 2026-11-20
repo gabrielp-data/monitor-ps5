@@ -5,7 +5,7 @@ Fontes:
   - KaBuM!      (só vendido e entregue por KaBuM!)
   - Amazon      (só vendido e entregue por Amazon.com.br)
   - Magalu      (pelo comparador Zoom, quando a Magalu tem o menor preço)
-  - AliExpress  (cuidado: lá quem vende são lojas de terceiros)
+  - Pelando e canais do Telegram (ofertas postadas pela comunidade)
 
 Como usar:
   py monitor_ps5.py            -> checa uma vez e mostra os preços
@@ -214,8 +214,20 @@ def avisar_canais():
         return
     print(f"  Canais do Telegram: {len(novos)} post(s) novo(s) de PS5")
     for o in novos:
-        topo = "🚨🚨🚨 PROMOÇÃO!!! 🚨🚨🚨" if o["preco"] and o["preco"] <= PRECO_SUPER else "📢 OFERTA DE PS5 NUM CANAL"
-        notificar(f"{topo}\n(canal {o['canal']})\n\n{o['texto'][:700]}\n\n📎 Post original: {o['link']}", o["foto"])
+        linhas = [l.strip() for l in o["texto"].split("\n") if l.strip()]
+        nome = re.sub(r"^[^\wÀ-ú]+", "", linhas[0]) if linhas else "PS5"
+        cupom = re.search(r"[Cc]upom:\s*([A-Za-z0-9]+)", o["texto"])
+        cupom = cupom.group(1) if cupom else ""
+        link = re.search(r"https?://\S+", o["texto"])
+        link = link.group(0) if link else o["link"]
+        lojas = {"meli.la": "MercadoLivre", "mercadolivre": "MercadoLivre", "amzn": "Amazon",
+                 "amazon": "Amazon", "shopee": "Shopee", "magalu": "Magalu",
+                 "magazineluiza": "Magalu", "kabum": "KaBuM", "vivo": "LojaVivo"}
+        loja = next((v for k, v in lojas.items() if k in link), o["canal"])
+        texto = montar_oferta(nome, o["preco"], loja, link, cupom,
+                              promo=bool(o["preco"] and o["preco"] <= PRECO_SUPER),
+                              extras=[f"📢 Postado no canal @{o['canal']}"])
+        notificar(texto, o["foto"], link, cupom)
         with open(TG_VISTOS, "a") as f:
             f.write(o["id"] + "\n")
 
@@ -264,10 +276,11 @@ def avisar_pelando():
         return
     print(f"  Pelando: {len(novas)} oferta(s) nova(s) de console")
     for o in novas:
-        topo = "🚨🚨🚨 PROMOÇÃO!!! 🚨🚨🚨" if o["preco"] <= PRECO_SUPER else "🔥 OFERTA NOVA DE PS5"
-        notificar(f"{topo}\n(postada no Pelando)\n\n🏪 {o['loja']}\n💰 {brl(o['preco'])}\n\n"
-                  f"{o['titulo'][:150]}\n\n🔗 {o['link'] or o['pelando']}\n"
-                  f"💬 Comentários: {o['pelando']}", o["foto"])
+        link = o["link"] or o["pelando"]
+        texto = montar_oferta(o["titulo"], o["preco"], o["loja"], link,
+                              promo=o["preco"] <= PRECO_SUPER,
+                              extras=[f"💬 Comentários no Pelando: {o['pelando']}"])
+        notificar(texto, o["foto"], link)
         with open(PELANDO_VISTOS, "a") as f:
             f.write(o["id"] + "\n")
 
@@ -315,14 +328,44 @@ def telegram(metodo, **dados):
         return json.loads(r.read().decode())
 
 
-def enviar_foto(chat_id, foto_url, legenda):
+def montar_oferta(nome, preco, loja, link, cupom="", promo=False, extras=()):
+    """Monta a mensagem no estilo dos canais de oferta."""
+    from html import escape as esc
+    tag = re.sub(r"[^\wÀ-ú]", "", loja) or "Loja"
+    linhas = []
+    if promo:
+        linhas += [f"🚨🚨 <b>PROMOÇÃO!!! PS5 ABAIXO DE {brl(PRECO_SUPER)}</b> 🚨🚨", ""]
+    linhas += [f"💥 <b>{esc(nome[:150])}</b>", ""]
+    if preco:
+        linhas.append(f"💰 Preço: <b>{brl(preco)}</b>")
+    linhas += [esc(e) for e in extras]
+    linhas.append(f"🏬 Loja: #{tag}")
+    if cupom:
+        linhas.append(f"🎟 Cupom: <code>{esc(cupom)}</code>")
+    linhas += ["", "🔗 PEGAR OFERTA: 👇", esc(link), "", "⚠️ Ofertas por tempo limitado."]
+    return "\n".join(linhas)
+
+
+def botoes(link, cupom=""):
+    linha = []
+    if link:
+        linha.append([{"text": "🛒 PEGAR OFERTA", "url": link}])
+    if cupom:
+        linha.append([{"text": "📋 COPIAR CUPOM", "copy_text": {"text": cupom}}])
+    return json.dumps({"inline_keyboard": linha}) if linha else ""
+
+
+def enviar_foto(chat_id, foto_url, legenda, teclado=""):
     """Baixa a foto da loja e manda o arquivo pro Telegram."""
     req = urllib.request.Request(foto_url, headers={"User-Agent": UA})
     with urllib.request.urlopen(req, timeout=30) as r:
         imagem = r.read()
     limite = "----monitorps5"
     partes = []
-    for nome, valor in [("chat_id", str(chat_id)), ("caption", legenda)]:
+    campos = [("chat_id", str(chat_id)), ("caption", legenda), ("parse_mode", "HTML")]
+    if teclado:
+        campos.append(("reply_markup", teclado))
+    for nome, valor in campos:
         partes.append(f'--{limite}\r\nContent-Disposition: form-data; name="{nome}"\r\n\r\n{valor}\r\n'.encode())
     partes.append(f'--{limite}\r\nContent-Disposition: form-data; name="photo"; filename="ps5.jpg"\r\n'
                   f'Content-Type: image/jpeg\r\n\r\n'.encode() + imagem + b"\r\n")
@@ -334,18 +377,21 @@ def enviar_foto(chat_id, foto_url, legenda):
         return json.loads(r.read().decode())
 
 
-def notificar(texto, foto=""):
-    """Manda a mensagem pro seu Telegram (com foto, se tiver)."""
+def notificar(texto, foto="", link="", cupom=""):
+    """Manda a mensagem pro seu Telegram (com foto e botões, se tiver)."""
     chat_id = ler_config().get("telegram_chat_id", "")
+    teclado = botoes(link, cupom)
     try:
         if foto:
             try:
-                enviar_foto(chat_id, foto, texto[:1000])
+                enviar_foto(chat_id, foto, texto[:1000], teclado)
                 print("  (aviso com foto enviado no Telegram)")
                 return
             except Exception:
                 pass  # foto falhou: manda só o texto
-        telegram("sendMessage", chat_id=chat_id, text=texto)
+        extra = {"reply_markup": teclado} if teclado else {}
+        telegram("sendMessage", chat_id=chat_id, text=texto, parse_mode="HTML",
+                 disable_web_page_preview="true", **extra)
         print("  (aviso enviado no Telegram)")
     except Exception as e:
         print(f"  (não consegui mandar no Telegram: {e})")
@@ -372,8 +418,8 @@ def brl(v):
 def checar():
     print(f"\n=== Checando preços do PS5 — {datetime.now():%d/%m/%Y %H:%M} ===")
     itens = []
-    fontes = [("KaBuM!", kabum), ("Amazon", amazon),
-              ("Magalu", magalu_via_zoom), ("AliExpress", aliexpress)]
+    # AliExpress foi tirado: lá aparecem anúncios falsos de PS5 baratinho
+    fontes = [("KaBuM!", kabum), ("Amazon", amazon), ("Magalu", magalu_via_zoom)]
     for nome, fonte in fontes:
         try:
             achados = fonte()
@@ -406,19 +452,10 @@ def checar():
         super_promo = i["preco"] <= PRECO_SUPER and (anterior is None or anterior > PRECO_SUPER or motivos)
         if super_promo:
             marca += "  🚨 PROMOÇÃO"
-            alertas.append((
-                f"🚨🚨🚨 PROMOÇÃO!!! 🚨🚨🚨\n"
-                f"PS5 POR MENOS DE {brl(PRECO_SUPER)}!\n\n"
-                f"🏪 {i['loja']}\n💰 {brl(i['preco'])}\n\n"
-                f"{i['titulo'][:150]}\n\n🔗 {i['link']}\n\n"
-                f"Corre antes que acabe! (mas confira se é o console mesmo)",
-                i.get("foto", "")))
-        elif motivos:
-            alertas.append((
-                f"🎮 PROMOÇÃO DE PS5 — {i['loja']}\n\n"
-                f"💰 {brl(i['preco'])}\n" + "\n".join(motivos) + "\n\n"
-                f"{i['titulo'][:150]}\n\n🔗 {i['link']}",
-                i.get("foto", "")))
+        if super_promo or motivos:
+            texto = montar_oferta(i["titulo"], i["preco"], i["loja"], i["link"],
+                                  promo=super_promo, extras=motivos)
+            alertas.append((texto, i.get("foto", ""), i["link"]))
         print(f"{brl(i['preco']):>13}  {i['loja']:<7} {i['titulo'][:70]}{marca}")
         print(f"{'':>13}  {i['link']}")
 
@@ -427,8 +464,8 @@ def checar():
     print(f"\nMais barato agora: {brl(mais_barato['preco'])} na {mais_barato['loja']}")
     print(f"Seu preço-alvo: {brl(PRECO_ALVO)}")
 
-    for texto, foto in alertas:
-        notificar(texto, foto)
+    for texto, foto, link in alertas:
+        notificar(texto, foto, link)
 
 
 if __name__ == "__main__":
